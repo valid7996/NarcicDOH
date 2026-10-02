@@ -47,6 +47,7 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.ExperimentalTextApi
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -185,6 +186,7 @@ private fun InfoCard(content: @Composable ColumnScope.() -> Unit) {
 
 // ---------- greeting ----------
 
+@OptIn(ExperimentalTextApi::class)
 @Composable
 fun Greeting() {
     val ctx = LocalContext.current
