@@ -14,4 +14,4 @@ Python infrastructure and DoH : [https://github.com/GFW-knocker/gfw_resist_HTTPS
 
 ## Credits
 
-Based on [Narcic DOH](https://github.com/valid7996/NarcicDOH) by [Robin Hood](https://github.com/mahdisml](https://github.com/valid7996), rebranded and redesigned as **Narcic DOH**.
+Based on [Web Immortal Guards](https://github.com/mahdisml/WebImmortalGuards) by [mahdisml](https://github.com/mahdisml) — rebranded and redesigned as **Narcic DOH** by [Robin Hood](https://github.com/valid7996).
