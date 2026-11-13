@@ -36,7 +36,7 @@ class VpnAdapter () {
         } catch (e: Exception) {
             Log.e("Sml", "stop()", e)
         }
-        pythonJob?.cancel("stop")
+        pythonJob?.cancel()
         smlwb = null
         pythonJob = null
     }
