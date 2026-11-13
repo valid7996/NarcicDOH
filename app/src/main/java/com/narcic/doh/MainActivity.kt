@@ -1,6 +1,7 @@
 package com.narcic.doh
 
 import android.os.Bundle
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
@@ -23,6 +24,21 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.CheckboxDefaults
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.core.graphics.drawable.toBitmap
+import com.narcic.doh.data.Modes
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
@@ -83,6 +99,7 @@ class MainActivity : ComponentActivity() {
 
             LaunchedEffect(true) {
                 mainViewModel.checkPageState(ctx)
+                mainViewModel.loadSettings(ctx)
             }
 
             NarcicTheme {
@@ -94,6 +111,7 @@ class MainActivity : ComponentActivity() {
                         0 -> Greeting()
                         1 -> Home()
                         2 -> Settings()
+                        3 -> AppPicker()
                     }
                 }
             }
@@ -360,6 +378,14 @@ fun Home() {
         mainViewModel.checkVpnState(ctx)
     }
 
+    val homeMessage = mainViewModel.message
+    LaunchedEffect(homeMessage) {
+        if (homeMessage != null) {
+            Toast.makeText(ctx, homeMessage, Toast.LENGTH_LONG).show()
+            mainViewModel.message = null
+        }
+    }
+
     var firstResume by remember { mutableStateOf(true) }
     AppCore.OnLifecycleEvent { _, event ->
         when (event) {
@@ -429,6 +455,17 @@ fun Home() {
                 fontFamily = Roboto_Medium,
                 textAlign = TextAlign.Center
             )
+            if (mainViewModel.vpnState) {
+                val shown = if (mainViewModel.lanSharing) (mainViewModel.lanAddress ?: "0.0.0.0") else "127.0.0.1"
+                Spacer(modifier = Modifier.height(6.dp))
+                Text(
+                    text = (if (mainViewModel.lanSharing) "LAN proxy " else "Proxy ") + shown + ":" + mainViewModel.port,
+                    color = Cyan,
+                    fontSize = 13.sp,
+                    fontFamily = Roboto_Medium,
+                    textAlign = TextAlign.Center
+                )
+            }
         }
         Row(
             modifier = Modifier
@@ -512,7 +549,9 @@ fun Settings() {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .verticalScroll(rememberScrollState())
                     .padding(horizontal = 20.dp)
+                    .padding(bottom = 24.dp)
             ) {
                 InfoCard {
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -562,6 +601,7 @@ fun Settings() {
                         }
                     }
                 }
+                NetworkSettings(mainViewModel)
                 Spacer(modifier = Modifier.height(14.dp))
                 InfoCard {
                     Column(
@@ -613,6 +653,318 @@ fun Settings() {
                                 fontFamily = Roboto_Medium
                             )
                         }
+                    }
+                }
+            }
+        }
+    }
+}
+
+
+// ---------- network settings ----------
+
+private val ErrorRed = Color(0xFFFF6B6B)
+
+@Composable
+private fun ChoiceChip(
+    label: String,
+    selected: Boolean,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    onClick: () -> Unit
+) {
+    val shape = RoundedCornerShape(14.dp)
+    Box(
+        modifier = modifier
+            .clip(shape)
+            .background(if (selected) Cyan.copy(alpha = 0.10f) else SurfaceNavyHigh)
+            .border(1.dp, if (selected) Cyan else StrokeNavySoft, shape)
+            .clickable(enabled = enabled, onClick = onClick)
+            .padding(horizontal = 10.dp, vertical = 10.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            text = label,
+            color = if (!enabled) Slate else if (selected) Cyan else Snow,
+            fontSize = 13.sp,
+            fontFamily = Roboto_Medium,
+            textAlign = TextAlign.Center
+        )
+    }
+}
+
+@Composable
+private fun CardTitle(text: String) {
+    Text(text = text, color = Mist, fontSize = 12.sp, fontFamily = Roboto_Medium)
+}
+
+@Composable
+private fun CardHint(text: String, color: Color = Slate) {
+    Text(text = text, color = color, fontSize = 12.sp, lineHeight = 17.sp)
+}
+
+@Composable
+private fun NetworkSettings(vm: MainViewModel) {
+    val ctx = LocalContext.current
+    val vpnMode = vm.mode == Modes.VPN
+
+    // mode
+    Spacer(modifier = Modifier.height(14.dp))
+    InfoCard {
+        CardTitle("Mode")
+        Spacer(modifier = Modifier.height(10.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            ChoiceChip("VPN mode", vpnMode, Modifier.weight(1f)) { vm.setMode(ctx, Modes.VPN) }
+            ChoiceChip("Proxy mode", !vpnMode, Modifier.weight(1f)) { vm.setMode(ctx, Modes.PROXY) }
+        }
+        Spacer(modifier = Modifier.height(10.dp))
+        CardHint(
+            if (vpnMode) {
+                "Apps on this phone use the proxy automatically. Android shows the VPN key icon."
+            } else {
+                "Only the proxy runs, with no VPN connection. Set the proxy by hand in Wi-Fi settings or inside apps."
+            }
+        )
+    }
+
+    // port
+    Spacer(modifier = Modifier.height(14.dp))
+    InfoCard {
+        CardTitle("Proxy port")
+        Spacer(modifier = Modifier.height(10.dp))
+        BasicTextField(
+            value = vm.portText,
+            onValueChange = { vm.setPortText(ctx, it) },
+            singleLine = true,
+            textStyle = TextStyle(color = Snow, fontSize = 16.sp, fontFamily = Roboto_Medium),
+            cursorBrush = SolidColor(Cyan),
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(12.dp))
+                .background(SurfaceNavyHigh)
+                .border(1.dp, if (vm.portValid) StrokeNavySoft else ErrorRed, RoundedCornerShape(12.dp))
+                .padding(horizontal = 14.dp, vertical = 12.dp)
+        )
+        Spacer(modifier = Modifier.height(8.dp))
+        if (vm.portValid) {
+            CardHint("Any port from ${Modes.MIN_PORT} to ${Modes.MAX_PORT}. Applies the next time the service starts.")
+        } else {
+            CardHint("Port must be between ${Modes.MIN_PORT} and ${Modes.MAX_PORT}.", ErrorRed)
+        }
+    }
+
+    // LAN sharing
+    Spacer(modifier = Modifier.height(14.dp))
+    InfoCard {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(modifier = Modifier.weight(1f)) {
+                CardTitle("Share proxy on LAN")
+                Spacer(modifier = Modifier.height(2.dp))
+                Text(
+                    text = "Let other devices on your Wi-Fi or hotspot use it",
+                    color = Snow,
+                    fontSize = 14.sp,
+                    fontFamily = Ubuntu_Regular
+                )
+            }
+            Spacer(modifier = Modifier.width(12.dp))
+            Switch(
+                checked = vm.lanSharing,
+                onCheckedChange = { vm.setLanSharing(ctx, it) },
+                colors = SwitchDefaults.colors(
+                    checkedThumbColor = DeepSpace,
+                    checkedTrackColor = Cyan,
+                    uncheckedThumbColor = Mist,
+                    uncheckedTrackColor = SurfaceNavyHigh
+                )
+            )
+        }
+        if (vm.lanSharing) {
+            Spacer(modifier = Modifier.height(10.dp))
+            val ip = vm.lanAddress
+            CardHint(
+                if (ip != null) {
+                    "On the other device, set an HTTP proxy to $ip port ${vm.port}."
+                } else {
+                    "No local network address found. Connect to Wi-Fi or turn on the hotspot."
+                },
+                Cyan
+            )
+            Spacer(modifier = Modifier.height(6.dp))
+            CardHint("Only devices on local (private) addresses are accepted. Anyone on that network can use the proxy, so use trusted networks only.")
+        }
+    }
+
+    // per-app
+    Spacer(modifier = Modifier.height(14.dp))
+    InfoCard {
+        CardTitle("Per-app settings")
+        Spacer(modifier = Modifier.height(10.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            ChoiceChip("All apps", vm.appMode == Modes.APPS_ALL, Modifier.weight(1f), vpnMode) {
+                vm.setAppMode(ctx, Modes.APPS_ALL)
+            }
+            ChoiceChip("Bypass mode", vm.appMode == Modes.APPS_BYPASS, Modifier.weight(1f), vpnMode) {
+                vm.setAppMode(ctx, Modes.APPS_BYPASS)
+            }
+            ChoiceChip("Per-app mode", vm.appMode == Modes.APPS_ONLY, Modifier.weight(1f), vpnMode) {
+                vm.setAppMode(ctx, Modes.APPS_ONLY)
+            }
+        }
+        Spacer(modifier = Modifier.height(10.dp))
+        CardHint(
+            when {
+                !vpnMode -> "Per-app rules work in VPN mode only."
+                vm.appMode == Modes.APPS_BYPASS -> "Selected apps skip the service and connect directly."
+                vm.appMode == Modes.APPS_ONLY -> "Only the selected apps use the service."
+                else -> "Every app on this phone uses the service."
+            }
+        )
+        if (vpnMode && vm.appMode != Modes.APPS_ALL) {
+            Spacer(modifier = Modifier.height(12.dp))
+            val count = vm.selectedForCurrentMode().size
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(Cyan.copy(alpha = 0.10f))
+                    .border(1.dp, Cyan.copy(alpha = 0.4f), RoundedCornerShape(14.dp))
+                    .clickable { vm.pageState = 3 }
+                    .padding(vertical = 12.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = "Choose apps ($count selected)",
+                    color = Cyan,
+                    fontSize = 14.sp,
+                    fontFamily = Roboto_Medium
+                )
+            }
+        }
+    }
+}
+
+// ---------- app picker ----------
+
+@Composable
+fun AppPicker() {
+    val ctx = LocalContext.current
+    val vm: MainViewModel = viewModel()
+    var query by remember { mutableStateOf("") }
+
+    BackHandler { vm.pageState = 2 }
+    LaunchedEffect(true) { vm.loadInstalledApps(ctx) }
+
+    val selected = vm.selectedForCurrentMode()
+    val title = if (vm.appMode == Modes.APPS_ONLY) "Apps that use the service" else "Apps that bypass the service"
+    val apps = vm.installedApps.filter {
+        query.isBlank() || it.label.contains(query, ignoreCase = true) || it.packageName.contains(query, ignoreCase = true)
+    }
+
+    Box(modifier = Modifier.fillMaxSize()) {
+        GlowBackground()
+        Column(modifier = Modifier.fillMaxSize()) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 20.dp, vertical = 18.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                RoundIconButton(
+                    iconRes = R.drawable.ic_back,
+                    description = Strings.setting_back,
+                    onClick = { vm.pageState = 2 }
+                )
+                Spacer(modifier = Modifier.width(14.dp))
+                Text(
+                    text = title,
+                    color = Snow,
+                    fontFamily = Ubuntu_Regular,
+                    fontSize = 18.sp
+                )
+            }
+            BasicTextField(
+                value = query,
+                onValueChange = { query = it },
+                singleLine = true,
+                textStyle = TextStyle(color = Snow, fontSize = 15.sp, fontFamily = Roboto_Medium),
+                cursorBrush = SolidColor(Cyan),
+                decorationBox = { inner ->
+                    Box {
+                        if (query.isEmpty()) {
+                            Text("Search apps", color = Slate, fontSize = 15.sp, fontFamily = Roboto_Medium)
+                        }
+                        inner()
+                    }
+                },
+                modifier = Modifier
+                    .padding(horizontal = 20.dp)
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(SurfaceNavy)
+                    .border(1.dp, StrokeNavySoft, RoundedCornerShape(12.dp))
+                    .padding(horizontal = 14.dp, vertical = 12.dp)
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f),
+                contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 20.dp, vertical = 8.dp)
+            ) {
+                items(apps, key = { it.packageName }) { app ->
+                    val icon = remember(app.packageName) {
+                        try {
+                            ctx.packageManager.getApplicationIcon(app.packageName).toBitmap(96, 96).asImageBitmap()
+                        } catch (e: Exception) {
+                            null
+                        }
+                    }
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(14.dp))
+                            .clickable { vm.toggleApp(ctx, app.packageName) }
+                            .padding(vertical = 8.dp, horizontal = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        if (icon != null) {
+                            Image(
+                                bitmap = icon,
+                                contentDescription = null,
+                                modifier = Modifier
+                                    .size(38.dp)
+                                    .clip(RoundedCornerShape(10.dp))
+                            )
+                        } else {
+                            Spacer(modifier = Modifier.size(38.dp))
+                        }
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = app.label,
+                                color = Snow,
+                                fontSize = 14.sp,
+                                fontFamily = Ubuntu_Regular,
+                                maxLines = 1
+                            )
+                            Text(
+                                text = app.packageName,
+                                color = Slate,
+                                fontSize = 11.sp,
+                                maxLines = 1
+                            )
+                        }
+                        Checkbox(
+                            checked = app.packageName in selected,
+                            onCheckedChange = { vm.toggleApp(ctx, app.packageName) },
+                            colors = CheckboxDefaults.colors(
+                                checkedColor = Cyan,
+                                uncheckedColor = Slate,
+                                checkmarkColor = DeepSpace
+                            )
+                        )
                     }
                 }
             }

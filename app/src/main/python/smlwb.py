@@ -6,8 +6,12 @@ import socket
 import threading
 import time
 import random
+import ipaddress
 
 listen_PORT = 4525
+listen_HOST = '127.0.0.1'
+lan_sharing = False
+_server = None
 
 num_fragment = 300
 fragment_sleep = 0.001
@@ -132,21 +136,47 @@ def extract_server_name_and_port(data):
     return host, int(port)
 
 
+def is_allowed_client(ip):
+    # LAN sharing is limited to local/private addresses only
+    try:
+        addr = ipaddress.ip_address(ip)
+    except ValueError:
+        return False
+    return addr.is_loopback or addr.is_private or addr.is_link_local
+
+
 class ThreadedServer(object):
     def __init__(self, host, port):
         self.DoH = DnsOverFragment()
         self.host = host
         self.port = port
+        self.closed = False
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         self.sock.bind((self.host, self.port))
 
-    def listen(self):
-        self.sock.listen(
-            128)
+    def close(self):
+        self.closed = True
+        try:
+            self.sock.close()
+        except Exception:
+            pass
 
-        while True:
-            client_sock, client_addr = self.sock.accept()
+    def listen(self):
+        self.sock.listen(128)
+        self.sock.settimeout(1.0)
+
+        while not self.closed:
+            try:
+                client_sock, client_addr = self.sock.accept()
+            except socket.timeout:
+                continue
+            except OSError:
+                break
+
+            if not is_allowed_client(client_addr[0]):
+                client_sock.close()
+                continue
             client_sock.settimeout(my_socket_timeout)
 
             time.sleep(accept_time_sleep)
@@ -265,6 +295,19 @@ def send_data_in_fragment(data, sock):
         print('----------finish------------')
 
 
-def main():
-    print("Now listening at: 127.0.0.1:" + str(listen_PORT))
-    ThreadedServer('', listen_PORT).listen()
+def main(port=4525, lan=False):
+    global listen_PORT, listen_HOST, lan_sharing, _server
+    stop()
+    listen_PORT = int(port)
+    lan_sharing = bool(lan)
+    listen_HOST = '0.0.0.0' if lan_sharing else '127.0.0.1'
+    _server = ThreadedServer(listen_HOST, listen_PORT)
+    print("Now listening at: " + listen_HOST + ":" + str(listen_PORT))
+    _server.listen()
+
+
+def stop():
+    global _server
+    if _server is not None:
+        _server.close()
+        _server = None

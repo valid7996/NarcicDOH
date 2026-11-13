@@ -7,26 +7,22 @@ import android.content.Intent
 import androidx.core.content.ContextCompat
 import com.narcic.doh.Strings.package_name
 import com.narcic.doh.Strings.start_action
-import com.narcic.doh.Strings.stop_action
 import com.narcic.doh.Strings.vpn_address
+import com.narcic.doh.data.Modes
 import java.net.NetworkInterface
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.cancel
 
 class VpnController (private val ctx: Context) {
-    private var controllerScope: CoroutineScope? = null
 
-    fun startVpn(){
-        controllerScope?.cancel("stop")
-        val startServiceIntent = Intent(ctx, VpnService::class.java)
+    fun startVpn(mode: String = Modes.VPN){
+        val target = if (mode == Modes.PROXY) ProxyService::class.java else VpnService::class.java
+        val startServiceIntent = Intent(ctx, target)
         startServiceIntent.action = start_action
         ContextCompat.startForegroundService(ctx, startServiceIntent)
     }
     fun endVpn(){
-        controllerScope?.cancel("stop")
-        val stopServiceIntent = Intent(ctx, VpnService::class.java)
-        stopServiceIntent.action = stop_action
-        ContextCompat.startForegroundService(ctx, stopServiceIntent)
+        // stopService does nothing when a service isn't running, so stopping both is safe
+        ctx.stopService(Intent(ctx, VpnService::class.java))
+        ctx.stopService(Intent(ctx, ProxyService::class.java))
     }
     fun isOn(): Boolean {
         return isVpnInterfaceUp() || isNotificationShowing()
